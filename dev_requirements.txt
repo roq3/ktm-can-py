@@ -1,2 +1,6 @@
 pytest>=5.4,<6
+pytest-cov
+flake8
+mypy
+autopep8
 python-can[seeedstudio]

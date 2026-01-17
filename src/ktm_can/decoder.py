@@ -3,38 +3,40 @@
 # decodes messages read from the KTM CAN bus
 
 import struct
+from typing import Iterator, Tuple, Any, Optional
 
 
-def lo_nibble(b):
+def lo_nibble(b: int) -> int:
     return b & 0x0F
 
 
-def hi_nibble(b):
+def hi_nibble(b: int) -> int:
     return (b >> 4) & 0x0F
 
 
-def signed12(value):
+def signed12(value: int) -> int:
     return -(value & 0b100000000000) | (value & 0b011111111111)
 
 
-def invert(value):
+def invert(value: int) -> int:
     return (~value & 0xFF)
 
 
 class Decoder(object):
     """decoder of Message objects"""
 
-    def __init__(self, emit_unmapped=False, enable_assertions=False):
+    def __init__(self, emit_unmapped: bool = False,
+                 enable_assertions: bool = False) -> None:
         super(Decoder, self).__init__()
 
         self.emit_unmapped = emit_unmapped
         self.enable_assertions = enable_assertions
 
-    def do_assert(self, condition, msg=None):
+    def do_assert(self, condition: bool, msg: Optional[str] = None) -> None:
         if self.enable_assertions:
             assert condition
 
-    def decode(self, msg):
+    def decode(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """yields (id, key, value) tuples for known data in a Message"""
 
         if msg.id == 0x120:

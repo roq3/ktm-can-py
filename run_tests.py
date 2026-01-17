@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--quick', '-q', action='store_true',
                        help='Run only basic tests (no coverage, no lint)')
     parser.add_argument('--all', '-a', action='store_true',
-                       help='Run all checks (tests + coverage + lint)')
+                       help='Run all checks (tests + coverage + lint + type checking)')
 
     args = parser.parse_args()
 
@@ -73,6 +73,7 @@ def main():
     run_tests = True
     run_coverage = args.coverage or args.all
     run_lint = args.lint or args.all
+    run_type_check = args.all
 
     if args.quick:
         run_coverage = False
@@ -100,6 +101,12 @@ def main():
     if run_lint:
         cmd = [python_exe, '-m', 'flake8', 'src/', 'tests/']
         if not run_command(cmd, "Running linting checks"):
+            success = False
+
+    # Run type checking
+    if run_type_check:
+        cmd = [python_exe, '-m', 'mypy', 'src/']
+        if not run_command(cmd, "Running type checking"):
             success = False
 
     # Summary

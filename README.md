@@ -48,7 +48,21 @@ Utility scripts are included in the `scripts` directory; I use these while worki
 3. install development dependencies: `pip install -r dev_requirements.txt`
 4. install source for local development: `python3 setup.py develop`
 5. make changes
-6. run tests: `pytest` or `./run_tests.py`
+6. run tests and quality checks: `./run_tests.py --all`
+
+### code formatting
+
+Before committing, format your code:
+```bash
+autopep8 --in-place --aggressive src/ tests/
+```
+
+### type checking
+
+Run mypy to check types:
+```bash
+mypy src/
+```
 
 ### testing
 
@@ -57,8 +71,10 @@ The project includes comprehensive tests covering all decoder functionality:
 - **Basic tests**: Test all supported CAN message IDs with known-good data
 - **Unmapped tests**: Test decoder with `emit_unmapped=True` option
 - **Helper function tests**: Test utility functions (`lo_nibble`, `hi_nibble`, `signed12`, `invert`)
+- **Edge case tests**: Test boundary conditions and error handling
+- **Configuration tests**: Test decoder configuration options
 
-**Test coverage**: 100%
+**Test coverage**: 100% (34 tests total)
 
 **Running tests:**
 ```bash
@@ -72,16 +88,24 @@ pytest --cov=ktm_can --cov-report=term-missing
 ./run_tests.py                    # Run all tests
 ./run_tests.py --coverage         # Run tests with coverage
 ./run_tests.py --lint            # Run tests + linting
-./run_tests.py --all             # Run all checks (tests + coverage + lint)
+./run_tests.py --all             # Run all checks (tests + coverage + lint + type checking)
 ./run_tests.py --quick           # Run only basic tests
 ```
 
 ### code quality
 
-The project uses:
-- **pytest** for testing
-- **coverage** for test coverage reporting
-- **flake8** for code linting (configured in `.flake8`)
+The project maintains high code quality standards:
+
+- **Type hints**: Full type annotations throughout the codebase
+- **Static type checking**: Uses mypy for type validation
+- **Code formatting**: Uses autopep8 for consistent formatting
+- **Linting**: Uses flake8 with custom configuration
+- **Testing**: 100% test coverage with comprehensive edge cases
+
+**Quality tools:**
+- **mypy**: Static type checking (`mypy src/`)
+- **flake8**: Code linting (configured in `.flake8`)
+- **autopep8**: Code formatting (`autopep8 --in-place --aggressive src/ tests/`)
 
 Run `./run_tests.py --all` to check everything before submitting changes.
 
