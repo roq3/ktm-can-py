@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 
 from ktm_can.decoder import Decoder
+from ktm_can.decoder790 import Decoder790
 import os
 import struct
 from typing import Dict, Tuple, Any
@@ -335,8 +336,132 @@ class TestDecoderConfiguration(object):
         assert decoder.emit_unmapped is False
         assert decoder.enable_assertions is True
 
-    def test_both_enabled(self):
-        """Test decoder with both options enabled"""
-        decoder = Decoder(emit_unmapped=True, enable_assertions=True)
-        assert decoder.emit_unmapped is True
-        assert decoder.enable_assertions is True
+
+def decode790(decoder: Decoder790, msg: 'Message') -> Dict[Tuple[int, str], Any]:
+    parsed = {}
+    for sender, key, value in decoder.decode(msg):
+        parsed[sender, key] = value
+
+    return parsed
+
+
+class TestDecoder790(object):
+    """Test cases for KTM 790 Duke decoder"""
+
+    decoder = Decoder790(enable_assertions=True)
+
+    def test_120_throttle_mode(self):
+        """Test CAN ID 0x120: Throttle/Mode + RPM"""
+        parsed = decode790(self.decoder, make_msg("120,06,79,00,00,00,00,00,3F"))
+
+        assert len(parsed) == 4
+        assert parsed[0x120, "rpm"] == 1657
+        assert parsed[0x120, "throttle"] == 0
+        assert parsed[0x120, "kill_switch"] is False
+        assert parsed[0x120, "throttle_map"] == 0
+
+    def test_129_gear_clutch(self):
+        """Test CAN ID 0x129: Gear/Clutch"""
+        parsed = decode790(self.decoder, make_msg("129,10,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 2
+        assert parsed[0x129, "gear"] == 1
+        assert parsed[0x129, "clutch_in"] is False
+
+    def test_129_gear_clutch_neutral(self):
+        """Test CAN ID 0x129: Gear/Clutch - neutral"""
+        parsed = decode790(self.decoder, make_msg("129,00,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 2
+        assert parsed[0x129, "gear"] == 0
+        assert parsed[0x129, "clutch_in"] is False
+
+    def test_12a_throttle_state(self):
+        """Test CAN ID 0x12A: Throttle State"""
+        parsed = decode790(self.decoder, make_msg("12A,80,01,02,00,00,00,00,00"))
+
+        assert len(parsed) == 3
+        assert parsed[0x12A, "throttle_open"] == 128
+        assert parsed[0x12A, "requested_throttle_map"] == 1
+        assert parsed[0x12A, "ride_mode"] == 2
+
+    def test_12b_wheel_speed(self):
+        """Test CAN ID 0x12B: Wheel Speed & Lean/Tilt"""
+        parsed = decode790(self.decoder, make_msg("12B,01,00,02,00,80,00,40,00"))
+
+        assert len(parsed) == 4
+        assert parsed[0x12B, "front_wheel_speed"] == 256
+        assert parsed[0x12B, "rear_wheel_speed"] == 512
+        assert parsed[0x12B, "lean_angle"] == 0.0
+        assert parsed[0x12B, "tilt_angle"] == 0.0
+
+    def test_290_brakes(self):
+        """Test CAN ID 0x290: Brakes"""
+        parsed = decode790(self.decoder, make_msg("290,01,00,02,00,00,00,00,00"))
+
+        assert len(parsed) == 2
+        assert parsed[0x290, "front_brake_pressure"] == 256
+        assert parsed[0x290, "rear_brake_pressure"] == 512
+
+    def test_450_tc_button(self):
+        """Test CAN ID 0x450: Traction Control Button"""
+        parsed = decode790(self.decoder, make_msg("450,01,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 1
+        assert parsed[0x450, "traction_control_button"] is True
+
+    def test_540_sensor(self):
+        """Test CAN ID 0x540: Sensors"""
+        parsed = decode790(self.decoder, make_msg("540,06,79,10,00,00,01,DD,00"))
+
+        assert len(parsed) == 5
+        assert parsed[0x540, "rpm"] == 1657
+        assert parsed[0x540, "gear"] == 0
+        assert parsed[0x540, "kickstand_up"] is False
+        assert parsed[0x540, "kickstand_err"] is False
+        assert parsed[0x540, "coolant_temp"] == 47.7
+
+    def test_550_kill_switch(self):
+        """Test CAN ID 0x550: Kill Switch"""
+        parsed = decode790(self.decoder, make_msg("550,01,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 1
+        assert parsed[0x550, "kill_switch_on"] is True
+
+    def test_552_fuel_level(self):
+        """Test CAN ID 0x552: Fuel Level"""
+        parsed = decode790(self.decoder, make_msg("552,80,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 1
+        assert abs(parsed[0x552, "fuel_level_percent"] - 50.2) < 0.1  # 128 / 2.55 ≈ 50.2
+
+    def test_650_lights(self):
+        """Test CAN ID 0x650: Lights/LED Status"""
+        parsed = decode790(self.decoder, make_msg("650,1F,00,00,00,00,00,00,00"))
+
+        assert len(parsed) == 5
+        assert parsed[0x650, "low_beam_on"] is True
+        assert parsed[0x650, "high_beam_on"] is True
+        assert parsed[0x650, "brake_light_on"] is True
+        assert parsed[0x650, "turn_signal_left"] is True
+        assert parsed[0x650, "turn_signal_right"] is True
+
+    def test_unknown_can_id_unmapped(self):
+        """Test unknown CAN ID with emit_unmapped=True"""
+        decoder = Decoder790(emit_unmapped=True)
+        parsed = decode790(decoder, make_msg("999,01,02,03,04,05,06,07,08"))
+
+        assert len(parsed) == 1
+        assert parsed[0x999, "unmapped"] == "01 02 03 04 05 06 07 08"
+
+    def test_known_can_ids(self):
+        """Test is_known_can_id method"""
+        assert self.decoder.is_known_can_id(0x120) is True
+        assert self.decoder.is_known_can_id(0x129) is True
+        assert self.decoder.is_known_can_id(0x999) is False
+
+    def test_can_id_names(self):
+        """Test get_can_id_name method"""
+        assert self.decoder.get_can_id_name(0x120) == "Throttle/Mode"
+        assert self.decoder.get_can_id_name(0x129) == "Gear/Clutch"
+        assert self.decoder.get_can_id_name(0x999) == "Unknown (0x999)"

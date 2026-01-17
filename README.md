@@ -24,7 +24,12 @@ Each byte contains 8 bits.
 
 ## repository structure
 
-Module source is in [`src/ktm_can/decoder.py`](src/ktm_can/decoder.py).  Tests are in the `tests` directory, and are intended to document raw message structure being parsed by the library and validated against known-good values.  The tests should give you a good idea of the data that's available, and the source contains comments with additional details, such as message frequency, assumptions about valid data, etc.
+Module source is in [`src/ktm_can/`](src/ktm_can/). The library includes two decoders:
+
+- [`decoder.py`](src/ktm_can/decoder.py) - Original decoder for KTM 690 Enduro R (based on 1290 SuperDuke research)
+- [`decoder790.py`](src/ktm_can/decoder790.py) - Decoder for KTM 790 Duke (ported from Kotlin [ktm-can](https://github.com/roq3/ktm-can) library)
+
+Tests are in the `tests` directory, and are intended to document raw message structure being parsed by the library and validated against known-good values.  The tests should give you a good idea of the data that's available, and the source contains comments with additional details, such as message frequency, assumptions about valid data, etc.
 
 Utility scripts are included in the `scripts` directory; I use these while working with live data and captured logs, mainly to verify functionality and to identify data that corresponds with actions (like turning a wheel or pressing a button).  They're rough because I mainly use them as live debugging aids, tweaking the source to filter out messages I'm not interested in, reduce noise, etc.  Several of them depend on [python-can](https://python-can.readthedocs.io/en/master/) for reading live data.
 
@@ -32,13 +37,16 @@ Utility scripts are included in the `scripts` directory; I use these while worki
 
 | CAN ID | Speed (ms) | Provides                                                 | Model(s)       |
 |--------|------------|----------------------------------------------------------|----------------|
-| `120`  | 20         | engine rpm, throttle position, kill switch, throttle map | 690 Enduro R   |
-| `129`  | 20         | gear position, clutch switch                             | 690 Enduro R   |
-| `12A`  | 50         | throttle map (requested), throttle state                 | 690 Enduro R   |
-| `12B`  | 10         | front wheel speed, rear wheel speed, lean, tilt angles   | 690 Enduro R   |
-| `290`  | 10         | front brake pressure                                     | 690 Enduro R   |
-| `450`  | 50         | traction control button                                  | 690 Enduro R   |
-| `540`  | 100        | engine rpm, gear, side stand switch, coolant temp        | 690 Enduro R   |
+| `120`  | 20         | engine rpm, throttle position, kill switch, throttle map | 690 Enduro R, 790 Duke |
+| `129`  | 20         | gear position, clutch switch                             | 690 Enduro R, 790 Duke |
+| `12A`  | 50         | throttle map (requested), throttle state                 | 690 Enduro R, 790 Duke |
+| `12B`  | 10         | front wheel speed, rear wheel speed, lean, tilt angles   | 690 Enduro R, 790 Duke |
+| `290`  | 10         | front brake pressure                                     | 690 Enduro R, 790 Duke |
+| `450`  | 50         | traction control button                                  | 690 Enduro R, 790 Duke |
+| `540`  | 100        | engine rpm, gear, side stand switch, coolant temp        | 690 Enduro R, 790 Duke |
+| `550`  | -          | kill switch                                              | 790 Duke       |
+| `552`  | -          | fuel level                                               | 790 Duke       |
+| `650`  | -          | LED lights status                                        | 790 Duke       |
 
 ## developing
 
