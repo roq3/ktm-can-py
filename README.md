@@ -48,7 +48,42 @@ Utility scripts are included in the `scripts` directory; I use these while worki
 3. install development dependencies: `pip install -r dev_requirements.txt`
 4. install source for local development: `python3 setup.py develop`
 5. make changes
-6. run tests: `pytest`
+6. run tests: `pytest` or `./run_tests.py`
+
+### testing
+
+The project includes comprehensive tests covering all decoder functionality:
+
+- **Basic tests**: Test all supported CAN message IDs with known-good data
+- **Unmapped tests**: Test decoder with `emit_unmapped=True` option
+- **Helper function tests**: Test utility functions (`lo_nibble`, `hi_nibble`, `signed12`, `invert`)
+
+**Test coverage**: 100%
+
+**Running tests:**
+```bash
+# Basic test run
+pytest
+
+# With coverage report
+pytest --cov=ktm_can --cov-report=term-missing
+
+# Using the test runner script
+./run_tests.py                    # Run all tests
+./run_tests.py --coverage         # Run tests with coverage
+./run_tests.py --lint            # Run tests + linting
+./run_tests.py --all             # Run all checks (tests + coverage + lint)
+./run_tests.py --quick           # Run only basic tests
+```
+
+### code quality
+
+The project uses:
+- **pytest** for testing
+- **coverage** for test coverage reporting
+- **flake8** for code linting (configured in `.flake8`)
+
+Run `./run_tests.py --all` to check everything before submitting changes.
 
 ## hardware
 
