@@ -117,18 +117,20 @@ class Decoder790(object):
 
     def _decode_throttle_mode(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x120: Throttle/Mode + RPM"""
-        # D0, D1 -- engine rpm
+
+        # D0, D1 -- engine rpm (big-endian)
         yield msg.id, "rpm", struct.unpack(">H", msg.data[0:2])[0]
 
         # D2 -- throttle position (0-255)
         yield msg.id, "throttle", msg.data[2]
 
-        # D3 high nibble -- kill switch (bit 7)
-        kill_switch = (msg.data[3] & 0b10000000) >> 7
-        yield msg.id, "kill_switch", kill_switch == 1
+        # D3 bit 4 -- kill switch (inverted: 0=RUN, 1=STOP)
+        kill_switch_raw = (msg.data[3] & 0b00010000) >> 4
+        kill_switch = 1 if kill_switch_raw == 0 else 0  # Invert
+        yield msg.id, "kill_switch", kill_switch
 
-        # D3 low nibble -- throttle map
-        throttle_map = lo_nibble(msg.data[3])
+        # D4 bit 0 -- throttle map
+        throttle_map = msg.data[4] & 0b00000001
         yield msg.id, "throttle_map", throttle_map
 
     def _decode_gear_clutch(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
@@ -143,34 +145,37 @@ class Decoder790(object):
 
     def _decode_throttle_state(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x12A: Throttle State"""
-        # D0 -- throttle open percentage (0-255)
-        yield msg.id, "throttle_open", msg.data[0]
+        # D0 bit 1 -- throttle open (inverted: 0=open, 1=closed)
+        throttle_open = ((msg.data[0] & 0b00000010) >> 1) == 0
+        yield msg.id, "throttle_open", throttle_open
 
-        # D1 -- requested throttle map
-        yield msg.id, "requested_throttle_map", msg.data[1]
+        # D1 bit 6 -- requested throttle map
+        requested_throttle_map = (msg.data[1] & 0b01000000) >> 6
+        yield msg.id, "requested_throttle_map", requested_throttle_map
 
-        # D2 -- ride mode
-        yield msg.id, "ride_mode", msg.data[2]
+        # D1, D3 -- ride mode (mapowanie w Kotlin: 0xAD=Rain, 0x2D=Street, 0x4D=Sport)
+        mode_byte = msg.data[1]
+        yield msg.id, "ride_mode_byte", mode_byte
 
     def _decode_wheel_speed(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x12B: Wheel Speed & Lean/Tilt"""
-        # D0, D1 -- front wheel speed (big-endian, scale?)
+        # D0, D1 -- front wheel speed (big-endian)
         front_speed = struct.unpack(">H", msg.data[0:2])[0]
         yield msg.id, "front_wheel_speed", front_speed
 
-        # D2, D3 -- rear wheel speed (big-endian, scale?)
+        # D2, D3 -- rear wheel speed (big-endian)
         rear_speed = struct.unpack(">H", msg.data[2:4])[0]
         yield msg.id, "rear_wheel_speed", rear_speed
 
-        # D4, D5 -- lean angle (12-bit signed)
-        lean_raw = parse_big_endian_uint16(msg.data[4], msg.data[5]) & 0xFFF
-        lean_angle = signed12(lean_raw) / 10.0  # Scale to degrees
-        yield msg.id, "lean_angle", lean_angle
-
-        # D6, D7 -- tilt angle (12-bit signed)
-        tilt_raw = parse_big_endian_uint16(msg.data[6], msg.data[7]) & 0xFFF
-        tilt_angle = signed12(tilt_raw) / 10.0  # Scale to degrees
+        # Tilt: D5 (8 bitów) + D6 high nibble (4 bity) = 12 bitów signed
+        tilt_raw = ((msg.data[5] & 0xFF) << 4) | hi_nibble(msg.data[6])
+        tilt_angle = signed12(tilt_raw)
         yield msg.id, "tilt_angle", tilt_angle
+
+        # Lean: D6 low nibble (4 bity) + D7 (8 bitów) = 12 bitów signed
+        lean_raw = (lo_nibble(msg.data[6]) << 8) | (msg.data[7] & 0xFF)
+        lean_angle = signed12(lean_raw)
+        yield msg.id, "lean_angle", lean_angle
 
     def _decode_brakes(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x290: Brakes"""
@@ -183,64 +188,82 @@ class Decoder790(object):
         yield msg.id, "rear_brake_pressure", rear_brake
 
     def _decode_traction_control(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
-        """Decode CAN ID 0x450: Traction Control Button"""
-        # D0 bit 0 -- traction control button pressed
-        tc_button = (msg.data[0] & 0b00000001) == 1
+        """Decode CAN ID 0x450: Traction Control Button
+        """
+        # D2 bit 0 -- traction control control button (0=not pressed, 1=pressed)
+        tc_button = msg.data[2] & 0b00000001
         yield msg.id, "traction_control_button", tc_button
 
     def _decode_sensor(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x540: Sensors"""
-        # D0, D1 -- engine rpm (duplicate from 0x120)
-        yield msg.id, "rpm", struct.unpack(">H", msg.data[0:2])[0]
+        # D1, D2 -- engine rpm (big-endian) UWAGA: offset +1!
+        yield msg.id, "rpm", struct.unpack(">H", msg.data[1:3])[0]
 
-        # D2 -- gear position (duplicate from 0x129)
-        yield msg.id, "gear", lo_nibble(msg.data[2])
+        # D3 low nibble -- gear position
+        yield msg.id, "gear", lo_nibble(msg.data[3])
 
-        # D3 bit 0 -- kickstand up
-        kickstand_up = (msg.data[3] & 0b00000001) == 1
+        # D1 bit 7 -- kickstand up (inverted: 0=up, 1=down)
+        kickstand_up = ((msg.data[1] & 0b10000000) >> 7) == 0
         yield msg.id, "kickstand_up", kickstand_up
 
-        # D3 bit 7 -- kickstand error
-        kickstand_err = ((msg.data[3] & 0b10000000) >> 7) == 1
+        # D4 bit 7 -- kickstand error
+        kickstand_err = ((msg.data[4] & 0b10000000) >> 7) == 1
         yield msg.id, "kickstand_err", kickstand_err
 
-        # D5 must be 0x00
-        self.do_assert(msg.data[4] == 0x00, "D5 must be 0x00")
-
-        # D6, D7 -- coolant temperature (°C)
-        coolant_temp = struct.unpack(">H", msg.data[5:7])[0] / 10.0
+        # D6, D7 -- coolant temperature (°C, signed big-endian)
+        coolant_temp = struct.unpack(">h", msg.data[6:8])[0] / 10.0
         yield msg.id, "coolant_temp", coolant_temp
 
     def _decode_kill_switch(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x550: Kill Switch"""
-        # D0 bit 0 -- kill switch on
-        kill_switch_on = (msg.data[0] & 0b00000001) == 1
+        # D0 bit 4 -- kill switch (0x10 bit set = RUN)
+        kill_switch_on = (msg.data[0] & 0x10) != 0
         yield msg.id, "kill_switch_on", kill_switch_on
 
     def _decode_fuel_level(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
         """Decode CAN ID 0x552: Fuel Level"""
-        # D0 -- fuel level (0-255, scale to percentage)
-        fuel_level = msg.data[0] / 2.55  # Convert to percentage
-        yield msg.id, "fuel_level_percent", fuel_level
+        # D0 -- fuel level (inverted: 255=empty, 0=full)
+        d0 = msg.data[0] & 0xFF
+        fuel_percent = int(((256 - d0) / 255.0) * 100)
+        fuel_percent = max(0, min(100, fuel_percent))  # Clamp 0-100
+        yield msg.id, "fuel_level_percent", fuel_percent
 
     def _decode_lights(self, msg: Any) -> Iterator[Tuple[int, str, Any]]:
-        """Decode CAN ID 0x650: Lights/LED Status"""
-        # D0 bit 0 -- low beam on
-        low_beam = (msg.data[0] & 0b00000001) == 1
-        yield msg.id, "low_beam_on", low_beam
-
-        # D0 bit 1 -- high beam on
-        high_beam = ((msg.data[0] & 0b00000010) >> 1) == 1
-        yield msg.id, "high_beam_on", high_beam
-
-        # D0 bit 2 -- brake light on
-        brake_light = ((msg.data[0] & 0b00000100) >> 2) == 1
-        yield msg.id, "brake_light_on", brake_light
-
-        # D0 bit 3 -- turn signal left on
-        turn_left = ((msg.data[0] & 0b00001000) >> 3) == 1
-        yield msg.id, "turn_signal_left", turn_left
-
-        # D0 bit 4 -- turn signal right on
-        turn_right = ((msg.data[0] & 0b00010000) >> 4) == 1
-        yield msg.id, "turn_signal_right", turn_right
+        """Decode CAN ID 0x650: Lights/LED Status
+        
+        Format ramki:
+        - 32-bitowe słowo (4 bajty)
+        - Bit 3: DRL Active
+        - Bit 5: High Beam Active
+        - Bit 6: Low Beam Active
+        - Bit 26: High Beam broken
+        - Bit 27: Low Beam broken
+        """
+        if len(msg.data) < 4:
+            return
+            
+        # Dekodowanie bitów z całego 32-bitowego słowa (little-endian)
+        word = (msg.data[0] & 0xFF) | \
+               ((msg.data[1] & 0xFF) << 8) | \
+               ((msg.data[2] & 0xFF) << 16) | \
+               ((msg.data[3] & 0xFF) << 24)
+        
+        # Bit 3 -- DRL Active (Daytime Running Lights)
+        drl_active = (word & (1 << 3)) != 0
+        yield msg.id, "drl_active", drl_active
+        
+        # Bit 5 -- High Beam Active (światła dalekie)
+        high_beam_active = (word & (1 << 5)) != 0
+        yield msg.id, "high_beam_active", high_beam_active
+        
+        # Bit 6 -- Low Beam Active (światła krótkie)
+        low_beam_active = (word & (1 << 6)) != 0
+        yield msg.id, "low_beam_active", low_beam_active
+        
+        # Bit 26 -- High Beam broken (uszkodzenie świateł dalekich)
+        high_beam_broken = (word & (1 << 26)) != 0
+        yield msg.id, "high_beam_broken", high_beam_broken
+        
+        # Bit 27 -- Low Beam broken (uszkodzenie świateł krótkich)
+        low_beam_broken = (word & (1 << 27)) != 0
+        yield msg.id, "low_beam_broken", low_beam_broken
